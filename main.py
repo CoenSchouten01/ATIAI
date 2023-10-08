@@ -24,8 +24,30 @@ class LinearModel(nn.Module):
     def forward(self, x):
         return self.layer(self.flatten(x))
         
+class ConvModel(nn.Module):
+    def __init__(self, input_channels = 1, n_hidden_channels=32, conv_kernel_size=3, pool_kernel_size = 2, dense_units = 2000, n_classes=2):
+        super().__init__()
+        self.model = nn.Sequential(nn.Conv2d(in_channels=input_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
+                                   nn.ReLU(),        
+                                   nn.MaxPool2d(kernel_size = pool_kernel_size),
+                                   nn.Conv2d(in_channels=n_hidden_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
+                                   nn.ReLU(), 
+                                   nn.MaxPool2d(kernel_size = pool_kernel_size),
+                                   nn.Conv2d(in_channels=n_hidden_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
+                                   nn.ReLU(), 
+                                   nn.Conv2d(in_channels=n_hidden_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
+                                   nn.ReLU(),
+                                   nn.Flatten(),
+                                   nn.Linear(in_features=32, out_features=dense_units),
+                                   nn.ReLU(),
+                                   nn.Linear(in_features=dense_units, out_features = n_classes) 
+        )
+        self.last_layer = nn.Softmax()
 
-def mutual_information(probs, conditioning=False):
+    def forward(self, x):
+        return self.model(x)
+
+def mutual_information(probs, conditioning=False, epsilon=0.0001):
     # Calculate I()
     n_classes = probs.shape[0]
     mi = 0
@@ -40,17 +62,17 @@ def mutual_information(probs, conditioning=False):
             p_fy = joint_fy[f, y]
             p_y = np.sum(joint_fy, axis=0)[y]
             if conditioning == False:
-                mi += p_fy * np.log2(p_fy / (p_f * p_y))
+                mi += p_fy * np.log2((p_fy + epsilon) / (p_f * p_y + epsilon))
             else:
                 for l in range(n_classes):
                     p_fly = probs[f, l, y]
                     p_fl = joint_fl[f, l]
                     p_ly = joint_ly[l, y]
                     p_l = np.sum(joint_fl, axis=0)[l]
-                    p_fy_given_l = p_fly / p_l
-                    p_f_given_l = p_fl / p_l
-                    p_y_given_l = p_ly / p_l
-                    mi += p_fly * np.log2(p_fy_given_l / (p_f_given_l * p_y_given_l))
+                    p_fy_given_l = p_fly / (p_l + epsilon)
+                    p_f_given_l = p_fl / (p_l + epsilon)
+                    p_y_given_l = p_ly / (p_l + epsilon)
+                    mi += p_fly * np.log2((p_fy_given_l + epsilon) / (p_f_given_l * p_y_given_l + epsilon))
     return mi
 
 def class_transform(label):
@@ -160,12 +182,12 @@ if __name__ == "__main__":
     lr=0.001
     trainloader, testloader, classes = get_data(batch_size=batch_size)
 
-    # conv_model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', num_classes=2, weights=None).to(DEVICE)
-    conv_model = torchvision.models.resnet18(num_classes=2)
+    # # conv_model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', num_classes=2, weights=None).to(DEVICE)
+    # conv_model = torchvision.models.resnet18(num_classes=2)
 
-    # MNIST has 1 channel whereas regular ResNet expects 3
-    conv_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
+    # # MNIST has 1 channel whereas regular ResNet expects 3
+    # conv_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+    conv_model = ConvModel()
     conv_model.to(DEVICE)
     linear_model = LinearModel().to(DEVICE)
 
