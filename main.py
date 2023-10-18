@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, CIFAR10
+from torchvision.models.vision_transformer import VisionTransformer, vit_b_16
 import torchvision
 import torch.optim as optim
 import matplotlib.pyplot as plt
@@ -300,13 +301,26 @@ if __name__ == "__main__":
     # MNIST has 1 channel whereas regular ResNet expects 3
     # conv_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
-    # conv_model.to(DEVICE)
     linear_model = LinearModel(n_classes=10).to(DEVICE)
 
+    transformer_model = VisionTransformer(image_size = 28,
+        patch_size = 4,
+        num_layers = 4,
+        num_heads = 4,
+        hidden_dim = 256,
+        mlp_dim = 512,
+        num_classes = 10)
+
+    transformer_model.conv_proj = nn.Conv2d(
+                in_channels=1, out_channels=256, kernel_size=16, stride=16
+            ) 
+    transformer_model.to(DEVICE)
+
     criterion = nn.CrossEntropyLoss()
+    transformer_optimizer = optim.SGD(transformer_model.parameters(), lr=0.001)
     conv_optimizer = optim.SGD(conv_model.parameters(), lr=0.001)
     linear_optimizer = optim.SGD(linear_model.parameters(), lr=0.01)
-    fit(conv_model=conv_model, linear_model=linear_model, epochs=30, loss_func=criterion, trainloader=trainloader, testloader=testloader, conv_optimizer=conv_optimizer, linear_optimizer=linear_optimizer, n_classes=10)
+    fit(conv_model=transformer_model, linear_model=linear_model, epochs=30, loss_func=criterion, trainloader=trainloader, testloader=testloader, conv_optimizer=transformer_optimizer, linear_optimizer=linear_optimizer, n_classes=10)
 
 
 
