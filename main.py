@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torchsummary import summary
 from torchvision.datasets import MNIST, CIFAR10
-from torchvision.models.vision_transformer import VisionTransformer, vit_b_16
+from torchvision.models.vision_transformer import VisionTransformer
 import torchvision
 import torch.optim as optim
 import matplotlib.pyplot as plt
@@ -312,8 +312,8 @@ if __name__ == "__main__":
         num_classes = 10)
 
     transformer_model.conv_proj = nn.Conv2d(
-                in_channels=1, out_channels=256, kernel_size=16, stride=16
-            ) 
+                in_channels=1, out_channels=256, kernel_size=4, stride=4
+            )
     transformer_model.to(DEVICE)
 
     criterion = nn.CrossEntropyLoss()
