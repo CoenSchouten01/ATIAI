@@ -94,11 +94,12 @@ def mutual_information_per_class(probs, conditioning=False, epsilon=0.0001):
 
           if conditioning == False:
               mi += p_fy * np.log2((p_fy + epsilon) / (p_f * p_y + epsilon))
-          else: # TODO
-              p_fly = probs[value, value, value]
-              p_fl = joint_fl[value, value]
-              p_ly = joint_ly[value, value]
-              p_l = np.sum(joint_fl, axis=0)[value]
+          else:
+            for l in range(n_classes):
+              p_fly = probs[f, l, value]
+              p_fl = joint_fl[f, l]
+              p_ly = joint_ly[l, value]
+              p_l = np.sum(joint_fl, axis=0)[l]
               p_fy_given_l = p_fly / (p_l + epsilon)
               p_f_given_l = p_fl / (p_l + epsilon)
               p_y_given_l = p_ly / (p_l + epsilon)
@@ -265,7 +266,7 @@ def fit(conv_model, linear_model, epochs, loss_func, trainloader, testloader, co
         history_mis_train.append(mis_fy_train)
         history_mis_test.append(mis_fy_test)
         history_mus.append(mus)
-    
+
     plt.plot(history_mi_train)
     plt.plot(history_mi_test)
     plt.plot(history_mu)
@@ -278,11 +279,10 @@ def fit(conv_model, linear_model, epochs, loss_func, trainloader, testloader, co
         plt.plot(np.array(history_mis_test)[:,i])
         plt.plot(np.array(history_mus)[:,i])
         plt.legend(['MI train', 'MI test', 'mu'])
-        plt.show()    
+        plt.show()
 
     for i in range(n_classes):
         plt.plot(np.array(history_mis_test)[:,i])
-
     plt.legend(['class 0', 'class 1', 'class 2', 'class 3', 'class 4', 'class 5',
                 'class 6', 'class 7', 'class 8', 'class 9'])
     # plt.legend(['MI train', 'MI test', 'mu'])
@@ -310,8 +310,8 @@ if __name__ == "__main__":
 
 
 
-    # # show some examples
-    # dataiter = iter(trainloader)
-    # images, labels = next(dataiter)
-    # imshow(torchvision.utils.make_grid(images))
-    # print(' '.join(f'{classes[labels[j]]:5s}' for j in range(4)))
+        # # show some examples
+        # dataiter = iter(trainloader)
+        # images, labels = next(dataiter)
+        # imshow(torchvision.utils.make_grid(images))
+        # print(' '.join(f'{classes[labels[j]]:5s}' for j in range(4)))
