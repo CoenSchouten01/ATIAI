@@ -103,7 +103,6 @@ def mutual_information_per_class(probs, conditioning=False, epsilon=0.0001):
               p_f_given_l = p_fl / (p_l + epsilon)
               p_y_given_l = p_ly / (p_l + epsilon)
               mi += p_fly * np.log2((p_fy_given_l + epsilon) / (p_f_given_l * p_y_given_l + epsilon))
-              mi += (1 - p_fly) * np.log2((1 - p_fy_given_l + epsilon) / ((1 - p_f_given_l) * (1 - p_y_given_l) + epsilon))
         mis.append(mi)
     return mis
 
@@ -262,11 +261,11 @@ def fit(conv_model, linear_model, epochs, loss_func, trainloader, testloader, co
 
         mis_fy_train = mutual_information_per_class(probs_train, False)
         mis_fy_test = mutual_information_per_class(probs_test, False)
-        #mus = np.array(mis_fy_test) - np.array(mutual_information_per_class(probs_test, True))
+        mus = np.array(mis_fy_test) - np.array(mutual_information_per_class(probs_test, True))
         history_mis_train.append(mis_fy_train)
         history_mis_test.append(mis_fy_test)
-        #history_mus.append(mus)
-
+        history_mus.append(mus)
+    
     plt.plot(history_mi_train)
     plt.plot(history_mi_test)
     plt.plot(history_mu)
@@ -277,9 +276,9 @@ def fit(conv_model, linear_model, epochs, loss_func, trainloader, testloader, co
         plt.title(f"Class number : {i}")
         plt.plot(np.array(history_mis_train)[:,i])
         plt.plot(np.array(history_mis_test)[:,i])
-        #plt.plot(np.array(history_mus)[:,i])
+        plt.plot(np.array(history_mus)[:,i])
         plt.legend(['MI train', 'MI test', 'mu'])
-        plt.show()
+        plt.show()    
 
     for i in range(n_classes):
         plt.plot(np.array(history_mis_test)[:,i])
