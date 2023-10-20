@@ -12,11 +12,13 @@ from tqdm import tqdm
 import pandas as pd
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False).to(DEVICE)
-# print(summary(model, (3, 244, 244)))
+DATASET = "MNIST" # "CIFAR10"
+MULTICLASS = True
 
 class LinearModel(nn.Module):
+    '''
+    The linear model as used in section 3 of the paper "SGD on Neural Networks Learns Functions of Increasing Complexity" by Nakkiran et al.
+    '''
     def __init__(self, input_size=1*28*28, n_classes=2):
         super().__init__()
         self.flatten = nn.Flatten()
@@ -26,7 +28,10 @@ class LinearModel(nn.Module):
         return self.layer(self.flatten(x))
 
 class ConvModel(nn.Module):
-    def __init__(self, input_channels = 1, n_hidden_channels=32, conv_kernel_size=3, pool_kernel_size = 2, dense_units = 2000, n_classes=2):
+    '''
+    The convulutional model as used in section 3 of the paper "SGD on Neural Networks Learns Functions of Increasing Complexity" by Nakkiran et al.
+    '''
+    def __init__(self, input_channels = 1, n_linear_in_features=32, n_hidden_channels=32, conv_kernel_size=3, pool_kernel_size = 2, dense_units = 2000, n_classes=2):
         super().__init__()
         self.model = nn.Sequential(nn.Conv2d(in_channels=input_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
                                    nn.ReLU(),
@@ -39,7 +44,7 @@ class ConvModel(nn.Module):
                                    nn.Conv2d(in_channels=n_hidden_channels, out_channels=n_hidden_channels, kernel_size=conv_kernel_size),
                                    nn.ReLU(),
                                    nn.Flatten(),
-                                   nn.Linear(in_features=32, out_features=dense_units),
+                                   nn.Linear(in_features=n_linear_in_features, out_features=dense_units),
                                    nn.ReLU(),
                                    nn.Linear(in_features=dense_units, out_features = n_classes)
         )
@@ -50,7 +55,11 @@ class ConvModel(nn.Module):
 
 
 def mutual_information(probs, conditioning=False, epsilon=0.0001):
-    # Calculate I()
+    '''
+    This function calculates the mutual information between model 1 and Y,
+    based on the conditioning argument this mutual information is either 
+    conditioned on model 2 or not
+    '''
     n_classes = probs.shape[0]
     mi = 0
 
@@ -64,7 +73,6 @@ def mutual_information(probs, conditioning=False, epsilon=0.0001):
             p_fy = joint_fy[f, y]
             p_y = np.sum(joint_fy, axis=0)[y]
             if conditioning == False:
-                # print(p_fy, p_f, p_y, epsilon)
                 mi += p_fy * np.log2((p_fy + epsilon) / (p_f * p_y + epsilon))
             else:
                 for l in range(n_classes):
@@ -79,6 +87,11 @@ def mutual_information(probs, conditioning=False, epsilon=0.0001):
     return mi
 
 def mutual_information_per_class(probs, conditioning=False, epsilon=0.0001):
+    '''
+    This function calculates the mutual information between model 1 and Y per class in Y,
+    based on the conditioning argument this mutual information is either 
+    conditioned on model 2 or not
+    '''
     n_classes = probs.shape[0]
     mis = []
 
@@ -109,31 +122,47 @@ def mutual_information_per_class(probs, conditioning=False, epsilon=0.0001):
     return mis
 
 def class_transform(label):
+    '''
+    This function is used to transform multiclass data to binary data
+    by setting the first 5 classes to 0 and the other 5 to 1
+    '''
     return int(label > 4)
 
 def get_data(batch_size):
+    '''
+    This function returns the test and train dataloaders, based on the set dataset and
+    wether or not multiclass is used
+    '''
     transform = transforms.ToTensor()
 
-    trainset = MNIST(root='./data', train=True, download=True, transform=transform)
+    if DATASET == "MNIST":
+        if MULTICLASS:
+            trainset = MNIST(root='./data', train=True, download=True, transform=transform)
+            testset = MNIST(root='./data', train=False, download=True, transform=transform)
+        else:
+            trainset = MNIST(root='./data', train=True, download=True, transform=transform, target_transform=class_transform)
+            testset = MNIST(root='./data', train=False, download=True, transform=transform, target_transform=class_transform)
+    elif DATASET == "CIFAR10":
+        if MULTICLASS:
+            trainset = CIFAR10(root='./data', train=True, download=True, transform=transform)
+            testset = CIFAR10(root='./data', train=False, download=True, transform=transform)
+        else:
+            trainset = CIFAR10(root='./data', train=True, download=True, transform=transform, target_transform=class_transform)
+            testset = CIFAR10(root='./data', train=False, download=True, transform=transform, target_transform=class_transform)
+    else:
+        raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
+
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                             shuffle=True, num_workers=2)
-
-    testset = MNIST(root='./data', train=False, download=True, transform=transform)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                             shuffle=False, num_workers=2)
-
-
-
-    classes = ('plane', 'car', 'bird', 'cat',
-            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    return trainloader, testloader, classes
-
-def imshow(img):
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
+    return trainloader, testloader
 
 def batch_loss(model, loss_func, xb, yb, optimizer = None):
+    '''
+    Calculate the batch loss for the given model using the given loss function
+    Performs one backpropagation step using the given optimizer
+    '''
     output = model(xb)
     loss = loss_func(output, yb)
 
@@ -144,188 +173,238 @@ def batch_loss(model, loss_func, xb, yb, optimizer = None):
 
     return loss.item(), len(xb)
 
-def fit(conv_model, linear_model, epochs, loss_func, trainloader, testloader, conv_optimizer, linear_optimizer, n_classes=2):
+def fit(model_1, model_2, optimizer_1, optimizer_2, epochs, loss_func, trainloader, testloader, n_classes=2):
+    '''
+    The main train-evaluation loop of the program
+    '''
 
+    # keep track of the mutual information and mu for the plots
     history_mi_train = []
     history_mi_test = []
     history_mu = []
 
+    # keep track of the mutual information and mu per class for the plots
     history_mis_train = []
     history_mis_test = []
     history_mus = []
 
-    conv_model.eval()
-    linear_model.eval()
+    # enter train mode
+    model_1.eval()
+    model_2.eval()
 
-    # F, L, Y
+    # model 1, model 2, Y
     counts = np.zeros((n_classes, n_classes, n_classes))
     test_counts = np.zeros((n_classes, n_classes, n_classes))
 
+    # perform initial evaluation before training
     for xb, yb in trainloader:
         xb = xb.to(DEVICE)
-        conv_predictions = torch.argmax(conv_model(xb).cpu(), dim=1)
-        linear_predictions = torch.argmax(linear_model(xb).cpu(), dim=1)
+        m1_predictions = torch.argmax(model_1(xb).cpu(), dim=1)
+        m2_predictions = torch.argmax(model_2(xb).cpu(), dim=1)
         for i in range(len(yb)):
-            counts[conv_predictions[i], linear_predictions[i], yb[i]] += 1
+            counts[m1_predictions[i], m2_predictions[i], yb[i]] += 1
 
-    count_correct = 0
-    count_corrects = 0
+    count_correct_1 = 0
+    count_correct_2 = 0
     for xb, yb in testloader:
         xb = xb.to(DEVICE)
-        conv_predictions = torch.argmax(conv_model(xb).cpu(), dim=1)
-        linear_predictions = torch.argmax(linear_model(xb).cpu(), dim=1)
+        m1_predictions = torch.argmax(model_1(xb).cpu(), dim=1)
+        m2_predictions = torch.argmax(model_2(xb).cpu(), dim=1)
         for i in range(len(yb)):
-            test_counts[conv_predictions[i], linear_predictions[i], yb[i]] += 1
-            if yb[i] == linear_predictions[i]:
-              count_correct += 1
-            if yb[i] == conv_predictions[i]:
-              count_corrects += 1
+            test_counts[m1_predictions[i], m2_predictions[i], yb[i]] += 1
+            if yb[i] == m1_predictions[i]:
+              count_correct_1 += 1
+            if yb[i] == m2_predictions[i]:
+              count_correct_2 += 1
 
-    # print(count_correct/len(testloader.dataset))
-    # print(count_corrects/len(testloader.dataset))
-
-
+    # calculate the emprical probabilities
     probs_train = counts/len(trainloader.dataset)
     probs_test = test_counts/len(testloader.dataset)
+
+    # calculate the mutual information and the mu
     mi_fy_train = mutual_information(probs_train, False)
     mi_fy_test = mutual_information(probs_test, False)
     mu = mi_fy_test - mutual_information(probs_test, True)
+
+    # update the histories
     history_mi_train.append(mi_fy_train)
     history_mi_test.append(mi_fy_test)
     history_mu.append(mu)
 
+    # repeatedly train and evaluate for the indicated number of epochs
     for epoch in tqdm(range(epochs)):
-        conv_model.train()
-        linear_model.train()
-        running_loss_conv = 0
-        running_loss_linear = 0
+        model_1.train()
+        model_2.train()
+        running_loss_m1 = 0
+        running_loss_m2 = 0
         sample_nums = 0
 
+        # perform a training epoch
         for xb, yb in trainloader:
             xb = xb.to(DEVICE)
             yb = yb.to(DEVICE)
-            loss_batch_conv, nums = batch_loss(conv_model, loss_func, xb, yb, conv_optimizer)
-            loss_batch_linear, _ = batch_loss(linear_model, loss_func, xb, yb, linear_optimizer)
+            loss_batch_m1, nums = batch_loss(model_1, loss_func, xb, yb, optimizer_1)
+            loss_batch_m2, _ = batch_loss(model_2, loss_func, xb, yb, optimizer_2)
 
-            running_loss_conv += loss_batch_conv * xb.size(0)
             sample_nums += nums
-            loss_conv = running_loss_conv / sample_nums
+            running_loss_m1 += loss_batch_m1 * xb.size(0)
+            loss_m1 = running_loss_m1 / sample_nums
 
-            running_loss_linear += loss_batch_linear * xb.size(0)
-            sample_nums += nums
-            loss_linear = running_loss_linear / sample_nums
+            running_loss_m2 += loss_batch_m2 * xb.size(0)
+            loss_m2 = running_loss_m2 / sample_nums
+
         print(
             f'EPOCH: {epoch+1:0>{len(str(epochs))}}/{epochs}',
             end=' '
         )
-        print(f'LOSS: {loss_conv:.4f}, {loss_linear:.4f} \n',end=' ')
+        print(f'LOSS: {loss_m1:.4f}, {loss_m2:.4f} \n',end=' ')
 
+        model_1.eval()
+        model_2.eval()
 
-        conv_model.eval()
-        linear_model.eval()
-
-        # F, L, Y
+        # model_1, model_2, Y
         counts = np.zeros((n_classes, n_classes, n_classes))
         test_counts = np.zeros((n_classes, n_classes, n_classes))
 
         for xb, yb in trainloader:
             xb = xb.to(DEVICE)
-            conv_predictions = torch.argmax(conv_model(xb).cpu(), dim=1)
-            linear_predictions = torch.argmax(linear_model(xb).cpu(), dim=1)
+            m1_predictions = torch.argmax(model_1(xb).cpu(), dim=1)
+            m2_predictions = torch.argmax(model_2(xb).cpu(), dim=1)
             for i in range(len(yb)):
-                counts[conv_predictions[i], linear_predictions[i], yb[i]] += 1
+                counts[m1_predictions[i], m2_predictions[i], yb[i]] += 1
 
-        count_correct = 0
-        count_corrects = 0
+        count_correct_1 = 0
+        count_correct_2 = 0
         for xb, yb in testloader:
             xb = xb.to(DEVICE)
-            conv_predictions = torch.argmax(conv_model(xb).cpu(), dim=1)
-            linear_predictions = torch.argmax(linear_model(xb).cpu(), dim=1)
+            m1_predictions = torch.argmax(model_1(xb).cpu(), dim=1)
+            m2_predictions = torch.argmax(model_2(xb).cpu(), dim=1)
             for i in range(len(yb)):
-                test_counts[conv_predictions[i], linear_predictions[i], yb[i]] += 1
-                if yb[i] == linear_predictions[i]:
-                  count_correct += 1
-                if yb[i] == conv_predictions[i]:
-                  count_corrects += 1
+                test_counts[m1_predictions[i], m2_predictions[i], yb[i]] += 1
+                if yb[i] == m1_predictions[i]:
+                  count_correct_1 += 1
+                if yb[i] == m2_predictions[i]:
+                  count_correct_2 += 1
 
-        print(count_correct/len(testloader.dataset))
-        print(count_corrects/len(testloader.dataset))
+        # print the accuracies
+        print(count_correct_1/len(testloader.dataset))
+        print(count_correct_2/len(testloader.dataset))
 
-
+        # calculate the emprical probabilities
         probs_train = counts/len(trainloader.dataset)
         probs_test = test_counts/len(testloader.dataset)
+
+        # calculate the mutual information and the mu
         mi_fy_train = mutual_information(probs_train, False)
         mi_fy_test = mutual_information(probs_test, False)
         mu = mi_fy_test - mutual_information(probs_test, True)
+        
+        # update the histories
         history_mi_train.append(mi_fy_train)
         history_mi_test.append(mi_fy_test)
         history_mu.append(mu)
 
+        # calculate the mutual information and the mu per class
         mis_fy_train = mutual_information_per_class(probs_train, False)
         mis_fy_test = mutual_information_per_class(probs_test, False)
         mus = np.array(mis_fy_test) - np.array(mutual_information_per_class(probs_test, True))
+        
+        # update the histories
         history_mis_train.append(mis_fy_train)
         history_mis_test.append(mis_fy_test)
         history_mus.append(mus)
 
+    # plot the mutual information over all classes on the train and test set, as well as the mu
     plt.plot(history_mi_train)
     plt.plot(history_mi_test)
     plt.plot(history_mu)
     plt.legend(['MI train', 'MI test', 'mu'])
     plt.show()
 
-    for i in range(n_classes):
-        plt.title(f"Class number : {i}")
-        plt.plot(np.array(history_mis_train)[:,i])
-        plt.plot(np.array(history_mis_test)[:,i])
-        plt.plot(np.array(history_mus)[:,i])
-        plt.legend(['MI train', 'MI test', 'mu'])
+    if MULTICLASS:
+        # plot the metrics per class in the data
+        for i in range(n_classes):
+            plt.title(f"Class number : {i}")
+            plt.plot(np.array(history_mis_train)[:,i])
+            plt.plot(np.array(history_mis_test)[:,i])
+            plt.plot(np.array(history_mus)[:,i])
+            plt.legend(['MI train', 'MI test', 'mu'])
+            plt.show()
+        
+        # plot all mutual informations in one plot
+        for i in range(n_classes):
+            plt.plot(np.array(history_mis_test)[:,i])
+
+        if DATASET == "MNIST":
+            classes = list(range(10))
+        elif DATASET == "CIFAR10":
+            classes = ['plane', 'car', 'bird', 'cat',
+            'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        else:
+            raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
+
+        plt.legend(classes)
+        plt.title("MI test per class")
         plt.show()
 
-    for i in range(n_classes):
-        plt.plot(np.array(history_mis_test)[:,i])
-    plt.legend(['class 0', 'class 1', 'class 2', 'class 3', 'class 4', 'class 5',
-                'class 6', 'class 7', 'class 8', 'class 9'])
-    # plt.legend(['MI train', 'MI test', 'mu'])
-    plt.show()
+        # plot all mus in one plot
+        for i in range(n_classes):
+            plt.plot(np.array(history_mus)[:,i])
+            
+        plt.legend(classes)
+        plt.title("mu per class")
+        plt.show()
 
 if __name__ == "__main__":
+    # hyperparameter
     batch_size = 64
-    lr=0.0001
-    trainloader, testloader, classes = get_data(batch_size=batch_size)
+    epochs = 30
+    
+    # fetch the training data
+    trainloader, testloader = get_data(batch_size=batch_size)
 
-    # conv_model = torchvision.models.resnet18(num_classes=2, weights=None)
-    conv_model = ConvModel(n_classes=10)
-    conv_model.to(DEVICE)
+    if MULTICLASS:
+        n_classes = 10
+    else: 
+        n_classes = 2    
 
-    # MNIST has 1 channel whereas regular ResNet expects 3
-    # conv_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-    linear_model = LinearModel(n_classes=10).to(DEVICE)
-
-    transformer_model = VisionTransformer(image_size = 28,
-        patch_size = 4,
-        num_layers = 4,
-        num_heads = 4,
-        hidden_dim = 256,
-        mlp_dim = 512,
-        num_classes = 10)
-
-    transformer_model.conv_proj = nn.Conv2d(
-                in_channels=1, out_channels=256, kernel_size=4, stride=4
-            )
+    # initialize the models
+    if DATASET == "MNIST":
+        linear_model = LinearModel(input_size=1*28*28, n_classes=n_classes).to(DEVICE)
+        conv_model = ConvModel(input_channels=1, n_linear_in_features=32, n_classes=n_classes).to(DEVICE)
+        transformer_model = VisionTransformer(image_size = 28,
+            patch_size = 4,
+            num_layers = 4,
+            num_heads = 4,
+            hidden_dim = 256,
+            mlp_dim = 512,
+            num_classes = n_classes)
+        transformer_model.conv_proj = nn.Conv2d(
+                    in_channels=1, out_channels=256, kernel_size=4, stride=4
+                )
+    elif DATASET == "CIFAR10":
+        linear_model = LinearModel(input_size=3*32*32, n_classes=n_classes).to(DEVICE)
+        conv_model = ConvModel(input_channels=3, n_linear_in_features=128, n_classes=n_classes).to(DEVICE)
+        transformer_model = VisionTransformer(image_size = 32,
+            patch_size = 4,
+            num_layers = 4,
+            num_heads = 4,
+            hidden_dim = 256,
+            mlp_dim = 512,
+            num_classes = n_classes)
+        transformer_model.conv_proj = nn.Conv2d(
+                    in_channels=3, out_channels=256, kernel_size=4, stride=4
+                )
+    else: 
+        raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
+    
     transformer_model.to(DEVICE)
 
+    # initialize criterion and optimizers
     criterion = nn.CrossEntropyLoss()
-    transformer_optimizer = optim.SGD(transformer_model.parameters(), lr=0.001)
-    conv_optimizer = optim.SGD(conv_model.parameters(), lr=0.001)
     linear_optimizer = optim.SGD(linear_model.parameters(), lr=0.01)
-    fit(conv_model=transformer_model, linear_model=linear_model, epochs=30, loss_func=criterion, trainloader=trainloader, testloader=testloader, conv_optimizer=transformer_optimizer, linear_optimizer=linear_optimizer, n_classes=10)
+    conv_optimizer = optim.SGD(conv_model.parameters(), lr=0.001)
+    transformer_optimizer = optim.SGD(transformer_model.parameters(), lr=0.001)
 
-
-
-        # # show some examples
-        # dataiter = iter(trainloader)
-        # images, labels = next(dataiter)
-        # imshow(torchvision.utils.make_grid(images))
-        # print(' '.join(f'{classes[labels[j]]:5s}' for j in range(4)))
+    # call fit on the wanted configuration
+    fit(model_1=conv_model, model_2=linear_model, optimizer_1=conv_optimizer, optimizer_2=linear_optimizer, epochs=epochs, loss_func=criterion, trainloader=trainloader, testloader=testloader, n_classes=n_classes)
