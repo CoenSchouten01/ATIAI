@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torchvision.transforms as transforms
 from tqdm import tqdm
+from torchsummary import summary
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATASET = "MNIST" # "CIFAR10"
+DATASET = "CIFAR10"
 MULTICLASS = True
 
 class LinearModel(nn.Module):
@@ -337,12 +338,26 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
     plt.plot(mu_mean, label = "mu")
     plt.fill_between(x=np.arange(len(mu_mean)), y1=mu_mean-mu_std, y2=mu_mean+mu_std, alpha=0.2)
     plt.legend()
+    plt.title("MNIST Transformer and Linear")
+    plt.xlabel("Epochs")
+    plt.ylabel("Mutual Information")
+    plt.savefig(DATASET + "-transformer-" + "all_classes" + ".png")
     plt.show()
 
     if MULTICLASS:
+        if DATASET == "MNIST":
+            classes = list(range(10))
+        elif DATASET == "CIFAR10":
+            classes = ['plane', 'car', 'bird', 'cat',
+            'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        else:
+            raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
+            
         # plot the metrics per class in the data
         for i in range(n_classes):
-            plt.title(f"Class number : {i}")
+            plt.title(f"MNIST Transformer and Linear: class {i}")
+            plt.xlabel("Epochs")
+            plt.ylabel("Mutual Information")
             mis_train_mean_i = np.array(mis_train_mean)[:,i]
             mis_train_std_i = np.array(mis_train_std)[:,i]
             plt.plot(mis_train_mean_i, label="MI Train")
@@ -358,15 +373,8 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             plt.plot(mus_mean_i, label = "mu")
             plt.fill_between(x=np.arange(len(mus_mean_i)), y1=mus_mean_i-mus_std_i, y2=mus_mean_i+mus_std_i, alpha=0.2)
             plt.legend()
+            plt.savefig(DATASET + "-transformer-" + "class" + str(classes[i]) + ".png")
             plt.show()
-        
-        if DATASET == "MNIST":
-            classes = list(range(10))
-        elif DATASET == "CIFAR10":
-            classes = ['plane', 'car', 'bird', 'cat',
-            'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-        else:
-            raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
         
         # plot all mutual informations in one plot
         for i in range(n_classes):
@@ -375,8 +383,11 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             plt.plot(mis_test_mean_i, label = classes[i])
             plt.fill_between(x=np.arange(len(mis_test_mean_i)), y1=mis_test_mean_i-mis_test_std_i, y2=mis_test_mean_i+mis_test_std_i, alpha=0.2)
         
-        plt.title("MI test per class")
+        plt.title("MNIST Transformer and Linear: MI all classes")
+        plt.xlabel("Epochs")
+        plt.ylabel("Mutual Information")
         plt.legend()
+        plt.savefig(DATASET + "-transformer-" + "all_mis" + ".png")
         plt.show()
 
         # plot all mus in one plot
@@ -386,15 +397,18 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             plt.plot(mus_mean_i, label = classes[i])
             plt.fill_between(x=np.arange(len(mus_mean_i)), y1=mus_mean_i-mus_std_i, y2=mus_mean_i+mus_std_i, alpha=0.2)
             
-        plt.title("mu per class")
+        plt.title("MNIST Transformer and Linear: mu all classes")
+        plt.xlabel("Epochs")
+        plt.ylabel("Mutual Information")
         plt.legend()
+        plt.savefig(DATASET + "-transformer-" + "all_mus" + ".png")
         plt.show()
 
 if __name__ == "__main__":
     # hyperparameters
     n_experiments = 2
     batch_size = 64
-    epochs = 3
+    epochs = 2
     
     # fetch the training data
     trainloader, testloader = get_data(batch_size=batch_size)
@@ -420,11 +434,11 @@ if __name__ == "__main__":
                 patch_size = 4,
                 num_layers = 4,
                 num_heads = 4,
-                hidden_dim = 256,
-                mlp_dim = 512,
+                hidden_dim = 64,
+                mlp_dim = 128,
                 num_classes = n_classes)
             transformer_model.conv_proj = nn.Conv2d(
-                        in_channels=1, out_channels=256, kernel_size=4, stride=4
+                        in_channels=1, out_channels=64, kernel_size=4, stride=4
                     )
         elif DATASET == "CIFAR10":
             linear_model = LinearModel(input_size=3*32*32, n_classes=n_classes).to(DEVICE)
@@ -433,16 +447,20 @@ if __name__ == "__main__":
                 patch_size = 4,
                 num_layers = 4,
                 num_heads = 4,
-                hidden_dim = 256,
-                mlp_dim = 512,
+                hidden_dim = 64,
+                mlp_dim = 128,
                 num_classes = n_classes)
             transformer_model.conv_proj = nn.Conv2d(
-                        in_channels=3, out_channels=256, kernel_size=4, stride=4
+                        in_channels=3, out_channels=64, kernel_size=4, stride=4
                     )
         else: 
             raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
         
         transformer_model.to(DEVICE)
+
+        print(summary(conv_model, input_size=(3, 32, 32)))
+
+        print(sum(p.numel() for p in transformer_model.parameters() if p.requires_grad))
 
         # initialize criterion and optimizers
         criterion = nn.CrossEntropyLoss()
