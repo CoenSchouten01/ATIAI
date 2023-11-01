@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATASET = "CIFAR10"
+DATASET = "MNIST" # "CIFAR10"
 MULTICLASS = True
 
 class LinearModel(nn.Module):
@@ -26,7 +26,7 @@ class LinearModel(nn.Module):
 
 class ConvModel(nn.Module):
     '''
-    The convulutional model as used in section 3 of the paper "SGD on Neural Networks Learns Functions of Increasing Complexity" by Nakkiran et al.
+    The convolutional model as used in section 3 of the paper "SGD on Neural Networks Learns Functions of Increasing Complexity" by Nakkiran et al.
     '''
     def __init__(self, input_channels = 1, n_linear_in_features=32, n_hidden_channels=32, conv_kernel_size=3, pool_kernel_size = 2, dense_units = 2000, n_classes=2):
         super().__init__()
@@ -337,13 +337,13 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
     plt.plot(mu_mean, label = "mu")
     plt.fill_between(x=np.arange(len(mu_mean)), y1=mu_mean-mu_std, y2=mu_mean+mu_std, alpha=0.2)
     plt.legend()
-    plt.title("MNIST Transformer and Linear")
+    plt.title(DATASET + " Transformer and Linear")
     plt.xlabel("Epochs")
     plt.ylabel("Mutual Information")
     plt.savefig(DATASET + "-transformer-" + "all_classes" + ".png")
     plt.show()
 
-    if MULTICLASS:
+    if MULTICLASS:   
         if DATASET == "MNIST":
             classes = list(range(10))
         elif DATASET == "CIFAR10":
@@ -354,7 +354,7 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             
         # plot the metrics per class in the data
         for i in range(n_classes):
-            plt.title(f"MNIST Transformer and Linear: class {i}")
+            plt.title(f"{DATASET} Transformer and Linear: class {str(classes[i])}")
             plt.xlabel("Epochs")
             plt.ylabel("Mutual Information")
             mis_train_mean_i = np.array(mis_train_mean)[:,i]
@@ -382,7 +382,7 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             plt.plot(mis_test_mean_i, label = classes[i])
             plt.fill_between(x=np.arange(len(mis_test_mean_i)), y1=mis_test_mean_i-mis_test_std_i, y2=mis_test_mean_i+mis_test_std_i, alpha=0.2)
         
-        plt.title("MNIST Transformer and Linear: MI all classes")
+        plt.title(DATASET + " Transformer and Linear: MI all classes")
         plt.xlabel("Epochs")
         plt.ylabel("Mutual Information")
         plt.legend()
@@ -396,7 +396,7 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
             plt.plot(mus_mean_i, label = classes[i])
             plt.fill_between(x=np.arange(len(mus_mean_i)), y1=mus_mean_i-mus_std_i, y2=mus_mean_i+mus_std_i, alpha=0.2)
             
-        plt.title("MNIST Transformer and Linear: mu all classes")
+        plt.title(DATASET + " Transformer and Linear: mu all classes")
         plt.xlabel("Epochs")
         plt.ylabel("Mutual Information")
         plt.legend()
@@ -405,10 +405,10 @@ def plot_results(history_mi_train, history_mi_test, history_mu, history_mis_trai
 
 if __name__ == "__main__":
     # hyperparameters
-    n_experiments = 2
+    n_experiments = 5
     batch_size = 64
-    epochs = 2
-    
+    epochs = 50
+
     # fetch the training data
     trainloader, testloader = get_data(batch_size=batch_size)
 
@@ -454,7 +454,7 @@ if __name__ == "__main__":
                     )
         else: 
             raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
-        
+
         transformer_model.to(DEVICE)
 
         # initialize criterion and optimizers
@@ -464,15 +464,15 @@ if __name__ == "__main__":
         transformer_optimizer = optim.SGD(transformer_model.parameters(), lr=0.001)
 
         # call fit on the desired configuration
-        mi_train, mi_test, mu, mis_train, mis_test, mus = fit(model_1=conv_model, model_2=linear_model, optimizer_1=conv_optimizer, 
+        mi_train, mi_test, mu, mis_train, mis_test, mus = fit(model_1=transformer_model, model_2=linear_model, optimizer_1=conv_optimizer, 
             optimizer_2=linear_optimizer, epochs=epochs, loss_func=criterion, trainloader=trainloader, testloader=testloader, 
             n_classes=n_classes)
-        
+
         history_mi_train.append(mi_train)
         history_mi_test.append(mi_test)
         history_mu.append(mu)
         history_mis_train.append(mis_train)
         history_mis_test.append(mis_test)
         history_mus.append(mus)
-        
+
     plot_results(history_mi_train, history_mi_test, history_mu, history_mis_train, history_mis_test, history_mus)
