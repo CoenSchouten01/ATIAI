@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torchvision.transforms as transforms
 from tqdm import tqdm
-from torchsummary import summary
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATASET = "CIFAR10"
@@ -457,10 +456,6 @@ if __name__ == "__main__":
             raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
         
         transformer_model.to(DEVICE)
-
-        print(summary(conv_model, input_size=(3, 32, 32)))
-
-        print(sum(p.numel() for p in transformer_model.parameters() if p.requires_grad))
 
         # initialize criterion and optimizers
         criterion = nn.CrossEntropyLoss()
