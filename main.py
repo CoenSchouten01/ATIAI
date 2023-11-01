@@ -437,7 +437,7 @@ if __name__ == "__main__":
                 mlp_dim = 128,
                 num_classes = n_classes)
             transformer_model.conv_proj = nn.Conv2d(
-                        in_channels=1, out_channels=64, kernel_size=4, stride=4
+                        in_channels=1, out_channels=transformer_model.hidden_dim, kernel_size=transformer_model.patch_size, stride=transformer_model.patch_size
                     )
         elif DATASET == "CIFAR10":
             linear_model = LinearModel(input_size=3*32*32, n_classes=n_classes).to(DEVICE)
@@ -449,9 +449,6 @@ if __name__ == "__main__":
                 hidden_dim = 64,
                 mlp_dim = 128,
                 num_classes = n_classes)
-            transformer_model.conv_proj = nn.Conv2d(
-                        in_channels=3, out_channels=64, kernel_size=4, stride=4
-                    )
         else: 
             raise Exception("Incorrect Dataset, must be either MNIST or CIFAR10")
 
